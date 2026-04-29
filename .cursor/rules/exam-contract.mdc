@@ -1,0 +1,64 @@
+---
+description: 期末考评分硬约束 —— 提交前 / 大改后必跑的代码自检 checklist
+alwaysApply: true
+---
+
+# 期末考契约（提交前自检）
+
+> 与 `session-bootstrap.mdc` 的分工：
+> - `session-bootstrap.mdc`：会话**起手**前的"必读清单"，回答"我能改什么"。
+> - **本规则**：会话**结束**前 / 大改完成后的"自检 checklist"，回答"我能不能交"。
+
+源约束：项目根 `Exam_question.txt`。每次改动结束前对照下列条目逐项勾选；**任何一条不符 = 不许 commit / 不许声明完成**。
+
+## 1 · 输入 schema（用户上传 Excel）
+
+- 文件类型 `.xlsx`，读取**第一个 sheet**（不限 sheet name）。
+- 必含列 `y`（数值时间序列），可选列 `date`（任意 Excel / ISO 日期）。
+- 行序：旧 → 新；`y` **不许有缺失**，缺失即报错。
+- `date` 仅用于显示 / 输出对齐，**不参与建模**。
+
+代码定位：`forecasting/io_utils.py::read_excel_input` + `validate_series`。
+
+## 2 · 功能（自动化是评分点）
+
+- (iii) 上传后**立即**输出**唯一一个** `y_{N+1}` 一步预测；**不许**让用户挑方法、不许给多个预测值。
+  - 代码定位：`app.py` 的 Part 1 区块 + `forecasting/forecaster.py::forecast_next`。
+- (iv) 上传后**立即**做回测：
+  - 按时间顺序 80% 训练 / 20% 测试；
+  - 对 test 段每个 `t`（首点 → 末点）做 walk-forward：用 `y[:t]` 拟合并预测 `y_t`。
+  - 代码定位：`forecasting/backtest.py::run_backtest`。
+- (v) 输出 Excel：单列 `y` 持有 test 段预测；输入有 `date` 则一并输出 `date`，行序与 test 段对齐。
+  - 代码定位：`forecasting/io_utils.py::build_backtest_dataframe` + `to_excel_bytes`。
+
+## 3 · 数据泄漏（0 分红线）
+
+- 回测循环里**只许**用 `y[:t]`（不含 `t` 自己）；任何 `y[:t+1]` / `y[t:]` / 对未来值的间接引用 = 0 分。
+- 所有模型函数**只接受 `y_history`**；不可接受未来索引、未来 dates、外部目标值。
+- 代码注释保留显式标记（如 `# 反泄漏: only y[:t]`），便于评分老师扫读。
+- 上述断言 / 切片 / 注释**不许**被任何重构借口删除（见 `blackbox-refactor.mdc` §7）。
+
+## 4 · 提交（70 分基础分）
+
+- GitHub Public 仓库可直接下载所有 webapp 文件；提交前用**无痕浏览器**实测仓库 URL。
+- 部署链接（推荐 Streamlit Cloud）实测可访问；提交前用**无痕浏览器**走一遍上传 → 看预测 → 下回测 .xlsx。
+
+## 5 · 自检清单（每次大改后必跑一次）
+
+```
+- [ ] 上传 dataset.xlsx 后，立刻看到一个 y_{N+1} 数值卡片
+- [ ] 上传后立刻看到回测指标（RMSE / MAE / MAPE）+ 训练/测试图表
+- [ ] Train size + Test size 都展示，且训练 / 测试日期区间清晰可见
+- [ ] 下载的 .xlsx 只有 y（或 y + date），行数 = N - int(N*0.8)
+- [ ] 下载的 .xlsx 里 date 列正常显示日期（不是 #####），格式 yyyy-mm-dd
+- [ ] 无任何"选择方法"类 UI 控件
+- [ ] grep 回测代码：循环切片严格 y[:t]，无 y[:t+1] / y[t:] / 未来索引
+- [ ] requirements.txt 含 streamlit / pandas / numpy / openpyxl / statsmodels / plotly
+- [ ] runtime.txt 锁定 python-3.11（Streamlit Cloud 兼容）
+- [ ] python -c "from forecasting import *; print('ok')" 通过
+```
+
+## 6 · 与其他规则的优先级
+
+冲突时本规则**优先级最高**——评分硬约束 > 模块化美观 > 重构便利。
+任何与上述 1–5 条冲突的"重构 / 精简 / 优化"建议都应被驳回或调整。

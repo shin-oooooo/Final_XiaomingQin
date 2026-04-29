@@ -1,0 +1,86 @@
+---
+description: 黑盒接口守则与文件/函数组织标准（重构不得感染外部调用端）
+alwaysApply: true
+---
+
+# 黑盒重构与接口契约
+
+> 与 `modular-refactor.mdc` 的分工：
+> - **本规则**：聚焦"对外契约"——`forecasting/__init__.py` 暴露的函数与 dataclass 字段不许悄悄改。
+> - `modular-refactor.mdc`：聚焦"对内组织"——文件多大、函数多长、怎么拆。
+
+## 1 · 文件 / 函数组织
+
+- 单文件单一职责；> 500 行就考虑拆成同主题子模块。
+- 单函数单一职责；参数 ≤ 5 个（超过用 dataclass 或 Context 对象聚合，参考 `SeriesInput`）。
+- 文件名与主要函数名对齐，外部一看文件名就知道能 import 什么。
+
+## 2 · 黑盒原则（外部调用者"无感"）
+
+`forecasting/__init__.py` 列出的所有名字（`forecast_next`、`run_backtest`、`read_excel_input`、`validate_series`、`build_backtest_dataframe`、`to_excel_bytes`、三个 dataclass）一经发布即契约：
+
+**不可悄悄变更**：
+- 函数名 / dataclass 名
+- 参数顺序与默认值
+- 返回值类型与字段名 / dataclass 字段
+- Excel 输出列名与列序（受 `exam-contract.mdc` §1·5 双重约束）
+
+**可以自由修改**：
+- 私有助手（`_` 前缀）—— 任意重命名 / 拆分 / 合并
+- 文件路径 —— 只要保留对外 import 路径，必要时在旧位置写 `from new.path import *` 桥接
+- 函数体实现细节、日志、断言文案
+
+## 3 · 必须改公开接口时的动作
+
+1. **先 grep**：列出所有调用者文件 + 行号。本项目主要调用方：`app.py`。
+2. 在改动说明里**逐条列出**所有受影响位置。
+3. 同批改完，绝不留悬挂引用。
+
+❌ 反例
+```python
+# 老接口
+def run_backtest(s: SeriesInput, train_ratio: float = 0.8) -> BacktestOutput: ...
+
+# 改成可变 dict 配置 —— 破坏 app.py 的所有调用
+def run_backtest(cfg: dict): ...
+```
+
+✅ 正例
+```python
+def run_backtest(s: SeriesInput, train_ratio: float = 0.8) -> BacktestOutput:
+    plan = _build_plan(s, train_ratio)   # 内部抽私有 helper
+    return _execute(plan)
+```
+
+## 4 · dataclass 字段契约
+
+- `SeriesInput` / `ForecastOutput` / `BacktestOutput` 的字段 = 公共契约。
+- **只许加字段，不许改名 / 删字段**；删除需先标 `# DEPRECATED:` ≥ 一轮交付，再真正移除。
+- 加字段时**给默认值**，使旧构造调用仍可工作。
+
+## 5 · Excel I/O 契约（双重约束）
+
+`io_utils.build_backtest_dataframe` / `to_excel_bytes` 的输出 schema 受 `Exam_question.txt` 直接约束：
+
+- 输出 sheet 必须包含 **`y`**；输入有 `date` 时必须包含 `date`。
+- **不许**为美观加额外列（如 `train_test_flag`、`row_idx`）—— 会扣评分项 (v) 的分。
+- 列宽 / 数字格式 / 字体属于"渲染层"，可自由改。
+
+## 6 · 重构后自检
+
+至少跑一次 import + 端到端 smoke test：
+
+```powershell
+python -c "from forecasting import (forecast_next, run_backtest, read_excel_input, validate_series, build_backtest_dataframe, to_excel_bytes, SeriesInput, ForecastOutput, BacktestOutput); print('imports ok')"
+```
+
+加分项（条件允许时）：在本地 `streamlit run app.py`，上传 `dataset.xlsx`，确认两段渲染 + 下载的 xlsx 列名 / 行数符合契约。
+
+## 7 · 反数据泄漏不可"重构掉"
+
+`forecasting/backtest.py` 里的：
+- `y_hist = y[:t]` 严格切片（左闭右开，不含 `t`）
+- `assert t < n`
+- `# 反泄漏: only y[:t]` 之类的注释标记
+
+属于评分硬约束的代码级证据，**任何重构必须保留**。详见 `exam-contract.mdc` §3。

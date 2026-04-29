@@ -1,0 +1,38 @@
+---
+description: 会话起始：每个 agent 动手前必须先读 Exam 契约、README 架构、全部源码
+alwaysApply: true
+---
+
+# 会话起始：必读清单（先读后改）
+
+> 与 `exam-contract.mdc` 的分工：
+> - **本规则**：会话**开始**时的"建立心智模型"动作，回答"我能改什么、改哪儿"。
+> - `exam-contract.mdc`：会话**结束**前的"提交自检"动作，回答"我改完了能不能交"。
+
+任何 agent 在**首次动手修改本项目任何源码或规则**前，**必须**用 Read 工具完整读取下列文件，建立全局心智模型。读完后才能讨论方案、提出 diff、执行写动作。
+
+## 1 · 必读清单（顺序无所谓，但都得读）
+
+1. **`Exam_question.txt`** —— 评分硬约束（输入 schema、自动化要求、反数据泄漏、输出 schema）。
+2. **`README.md`** —— 重点是 *Forecasting Method*、*Project Layout*、*Anti-Data-Leakage Statement* 三节，掌握分层与命名约定。
+3. **`forecasting/` 下全部源码**（包内每个 `.py` 都读）：
+   - `__init__.py` —— 公共 API 的唯一入口
+   - `contracts.py` —— `SeriesInput` / `ForecastOutput` / `BacktestOutput` 三个 dataclass 契约
+   - `io_utils.py` —— Excel 读 / 校验 / 写
+   - `forecaster.py` —— Part 1 一步预测公开入口
+   - `backtest.py` —— Part 2 walk-forward 回测公开入口（**反数据泄漏红线**）
+   - `models.py` —— 私有模型（`_naive` / `_theta` / `_damped_holt`）+ `ensemble_one_step`
+4. **`app.py`** —— Streamlit UI 与编排，是上述 `forecasting` 包的唯一调用方。
+
+## 2 · 何时可以跳过
+
+- 只读请求（用户问"代码里 X 在哪儿"之类）—— 仍建议先读 `__init__.py` + 相关一两个文件再回答。
+- 用户**显式说**"跳过阅读，直接改 X 的第 Y 行" —— 才允许豁免。
+
+## 3 · 读完后的动作顺序
+
+1. 复述项目分层一句话（UI 在 `app.py`，模型与 IO 全在 `forecasting/`），确认心智模型对齐。
+2. 对照 `exam-contract.mdc` 的输入 / 输出 / 反泄漏三段，判断改动是否触线。
+3. 再写 diff / 调用编辑工具。
+
+> ⚠️ 若发现本规则与项目实际文件清单已不一致（新增 / 重命名 / 拆分），**先更新本规则**再继续工作。

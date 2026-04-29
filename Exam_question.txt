@@ -1,0 +1,49 @@
+A dataset is given for you to check your webapp. The dataset is constructed from log-close prices of multiple stocks downloaded from AkShare, then combined as a linear combination. You can use any tools, including AI, to analyze the given dataset and forecast. Each student needs to finish the final by submitting a link to a GitHub repository and a link to their webapp. 
+
+Input Excel schema (what users upload):
+1. File type: .xlsx
+2. Sheet: the first sheet will be used (no requirement on sheet name).
+3. Columns:
+   - A required column named "y" containing a univariate time series with N samples (numeric).
+   - An optional column named "date" (any Excel date format or ISO string). If provided, it is used only for display/output alignment; forecasting uses only "y".
+4. Ordering and missing values:
+   - Rows are ordered from oldest to newest.
+   - The "y" column must not contain missing values. If missing values exist, the webapp should report an error.
+
+The functions of the webapp:
+1. Allow users to upload an Excel file that contains a time series with N samples.
+2. Part 1 Forecasting (one-step ahead).
+   - Immediately after the dataset is uploaded, the webapp must generate ONE single one-step-ahead forecast for the next time point: predict y_{N+1} using only {y_1, y_2, ..., y_N}.
+   - The forecasting method is up to the students. Searching suitable methods for forecasting is the main part for evaluation.
+3. Part 2 Back testing (rolling / walk-forward evaluation).
+   - Split the uploaded series into an 80% training segment and a 20% test segment, by time order.
+   - Perform rolling one-step-ahead forecasts over the test segment:
+     For each test time index t (from the first test point to the last), fit/refresh the model using only the data available up to t-1, then forecast y_t.
+   - The webapp must output an Excel file that contains the forecast values for the test segment (0.2*N values).
+   - Output schema: the output Excel must contain a single column named "y" holding the forecasts in the same row order as the corresponding test period (and include "date" as well if the input included "date").
+
+Submission requirements: You are required to submit: 
+
+A link to your GitHub repository (make sure it's accessible)
+
+A link to your live web application
+
+Fail to submit the required links may result in a deduction of your exam score
+
+Grading:
+AI Usage (70 points): 
+(i) (20 points) The link of GitHub repository can be accessed with all the files for the webapp can be downloaded for verification.
+(ii) (20 points) The link of the webapp can be properly accessed.
+(iii) (10 points) The one-step ahead forecast is computed right after the dataset is uploaded. Points will be deducted if users are requested to choose methods or multiple forecasts are computed.
+(iv) (10 points) The back-testing is properly conducted right after the dataset is uploaded.
+(v) (10 points) The Excel file for forecasted values is output properly.
+
+Data leakage policy (0 points rule):
+- Forecasts must be generated using only past information available at the forecast time. Any use of future values from the uploaded file (directly or indirectly) to produce forecasts is considered data leakage and may result in 0 points for the forecasting component.
+
+Forecast accuracy (30 points):
+While a dataset will be given for them to test their webapps during the exam, their webapps will be evaluated by another dataset. The output forecasted values for the new dataset will be compared among the students by the following metrics.
+(i) (10 points) Root Mean Squared Error: The student with the lowest RMSE will get 10 points. For the other students, a student will get 10*(1-x%) points if his/her RMSE is x% higher than the lowest RMSE.  
+(ii) (10 points) Mean Absolute Error: The student with the lowest MAE will get 10 points. For the other students, a student will get 10*(1-x%) points if his/her MAE is x% higher than the lowest MAE.
+(iii) (10 points) Mean Absolute Percentage Error: The student with the lowest MAPE will get 10 points. For the other students, a student will get 10*(1-x%) points if his/her MAPE is x% higher than the lowest MAPE.
+    

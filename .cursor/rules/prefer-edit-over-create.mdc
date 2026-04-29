@@ -1,0 +1,67 @@
+---
+description: 优先改既有文件；必须新建时按本项目目录归位
+alwaysApply: true
+---
+
+# 优先编辑，少建新文件
+
+## 1 · 决策顺序（越靠前越优先）
+
+1. **改已有函数** —— 不动签名，只动内部（详见 `modular-refactor.mdc` / `blackbox-refactor.mdc`）。
+2. **在已有文件里加私有 helper / 常量** —— 就地扩展同主题文件。
+3. **新建文件** —— 仅当：
+   - 已有最相关文件 **> 300 行** 且主题正交，或
+   - 新增内容是**独立单元**（例如全新模型族、独立 IO 适配器），就地塞入会污染原文件职责。
+
+## 2 · 新文件落位规则（对齐当前项目布局）
+
+```
+.
+├── app.py                  # Streamlit UI 与编排（唯一 UI 入口）
+├── forecasting/
+│   ├── __init__.py         # 公共 API（导出清单）
+│   ├── contracts.py        # @dataclass 契约
+│   ├── io_utils.py         # Excel 读/校验/写
+│   ├── forecaster.py       # Part 1: forecast_next
+│   ├── backtest.py         # Part 2: run_backtest（反泄漏红线）
+│   └── models.py           # 私有模型 + ensemble_one_step
+└── ...
+```
+
+| 新增内容类型 | 目标位置 |
+| --- | --- |
+| 新预测模型 / 模型变体 | 加到 `forecasting/models.py`（私有 `_xxx` 函数）；不暴露到 `__init__.py` |
+| 新数据校验 / 新输出列规则 | 改 `forecasting/io_utils.py` |
+| 新 dataclass 字段 | **追加**到 `forecasting/contracts.py` 的现有 dataclass，不要新建 dataclass |
+| 新 UI 控件 / 图表 / 区块 | 改 `app.py`；超长再考虑拆成 `app_sections/<topic>.py` 同级模块 |
+| 一次性脚本 / 自检 | 放项目根，命名 `_check_*.py`，并加入 `.gitignore` 或最终清理 |
+| 文档补充 | 改 `README.md`，不要建新 md |
+
+## 3 · 不许做的事
+
+- ❌ 在 `forecasting/` 之外引入第二条数据流 / 第二个建模路径。
+- ❌ 在 `app.py` 里写裸算法实现（建模逻辑必须走 `forecasting/` 包，UI 只编排）。
+- ❌ 新建 `utils.py` / `helpers.py` / `misc.py` 这种黑洞文件。
+- ❌ 新增 dataclass 来"装新返回值"——优先在现有 dataclass 加可选字段。
+
+## 4 · 动手前 30 秒自检
+
+```
+- [ ] 已 grep 过同名 / 近义函数？
+- [ ] 能直接改 already-existing helper 完成需求吗？
+- [ ] 若必须新建：目标位置已有同主题兄弟文件吗？
+- [ ] 是否会破坏 forecasting/__init__.py 的导出契约？
+```
+
+## 5 · 反例 → 正例
+
+```
+❌ 项目根新建 my_arima.py
+✅ 在 forecasting/models.py 加 _arima(y_history) 私有函数，纳入 ensemble_one_step
+
+❌ 为一个 5 行 helper 建 forecasting/utils.py
+✅ 内联进调用点所在文件的 _helper 私有函数
+
+❌ 新建 forecasting/contracts_v2.py 装新字段
+✅ 直接给 forecasting/contracts.py 的 BacktestOutput 追加可选字段
+```

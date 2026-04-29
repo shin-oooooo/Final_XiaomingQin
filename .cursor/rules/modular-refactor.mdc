@@ -1,0 +1,113 @@
+---
+description: 模块化与接口稳定性编码规范（适用于 app.py + forecasting/ 包）
+alwaysApply: true
+---
+
+# 模块化 + 接口稳定性
+
+## 1 · 文件与函数
+
+- **单一职责**：每个文件只装一类东西；文件名一眼能看出主题（见 `forecasting/{io_utils,forecaster,backtest,models,contracts}.py`）。
+- **文件规模**：目标 ≤ 300 行；到 500 行必须拆分。
+- **函数参数**：> 4 个强烈建议改用 `@dataclass`（参考 `SeriesInput`、`BacktestOutput`）。
+- **函数职责**：> 30 行考虑抽 `_` 前缀私有 helper。
+
+## 2 · 接口稳定性（黑盒原则）
+
+修改 `forecasting/__init__.py` 导出的任何函数 / dataclass 时：
+
+**必须保持不变**：
+- 函数名 / 类名
+- 参数顺序与默认值
+- 返回值类型与字段名
+
+**可以自由修改**：
+- 函数内部实现
+- 私有 `_helper`
+- 日志 / 断言 / 异常文案
+
+### 例子
+
+```python
+# ❌ BAD —— 改了参数顺序，破坏 app.py 调用
+def run_backtest(train_ratio, s):  # 原来是 (s, train_ratio=0.8)
+
+# ✅ GOOD —— 内部重构，签名不动
+def run_backtest(s: SeriesInput, train_ratio: float = 0.8) -> BacktestOutput:
+    plan = _make_plan(s, train_ratio)        # 抽出来的私有 helper
+    return _run_walk_forward(plan)
+```
+
+## 3 · 必须改接口时的强制动作
+
+如果**必须**改公开函数名 / 参数顺序 / 返回字段：
+
+1. **先 grep**：列出所有调用者文件 + 行号（本项目主要看 `app.py` 与 `forecasting/__init__.py`）。
+2. **在改动说明里逐条列出**所有受影响位置。
+3. **同批同步改**所有调用点；不留悬挂引用。
+
+示例说明格式：
+
+```
+接口变更：BacktestOutput 新增字段 test_size: int
+
+受影响位置：
+- forecasting/contracts.py:60      （新增字段定义）
+- forecasting/backtest.py:67       （构造时填入）
+- app.py:113                       （metric 渲染处可选使用）
+全部已同步。
+```
+
+> dataclass 加**新字段**时给默认值，避免破坏旧构造调用。
+
+## 4 · 拆分检查清单
+
+动刀前自检：
+
+- [ ] 拆完后每个新文件 ≤ 300 行
+- [ ] 拆完后每个公开函数 / dataclass 签名**未变**
+- [ ] 只有 `_` 前缀私有函数允许改签名
+- [ ] 所有调用方已 grep 并列出
+- [ ] 跑一次 `python -c "from forecasting import *; print('ok')"` smoke test
+
+## 5 · "做一轮精简"标准 SOP
+
+当用户说"做一轮精简 / 重构 / 瘦身"时，按此固定流程：
+
+### Step A · 体检（只读）
+1. 列出所有 > 300 行的源文件（候选拆分对象）。
+2. 列出所有 > 30 行 / 参数 > 4 个的函数（候选简化对象）。
+3. 列出疑似死代码（grep 验证未被任何文件 import）。
+4. 列出重复实现（同名 / 近义 helper 在多文件出现）。
+
+### Step B · 分类（决定动刀方式）
+
+| 现象 | 默认动作 |
+| --- | --- |
+| 文件超长但职责单一 | 抽 `_helper` 私有函数到同文件，公开 API 不动 |
+| 文件超长且杂糅多职责 | 拆成子模块；原文件保留 `from .new import *` 桥接 |
+| 函数参数过多 | 内部用 `@dataclass` 聚合；**外部签名一字不改** |
+| 重复实现 | 留最稳的一个；其余改为转发，**不删旧名** |
+| 死代码 | 默认**不删**，先标 `# DEPRECATED: ...`；删除单独提报 |
+
+### Step C · 报告（必须先呈给用户，不要直接动刀大改）
+
+对每条候选给出：
+
+```
+[文件 / 函数] · [行数 / 参数数 / 调用次数]
+现状：…一句话…
+建议：保持外部接口；内部抽 _helper 把 X 段挪走
+风险：⬛ 零接口变更 / 🟡 仅内部 / 🔴 必须改签名（列出调用点）
+```
+
+### Step D · 执行（用户确认后）
+
+- ⬛ / 🟡 项可批量执行；做完跑 import smoke test。
+- 🔴 项**逐项**列出 grep 出的全部调用位置，同批修改，再跑端到端 smoke test（启动 streamlit 上传 `dataset.xlsx` 走完两段）。
+
+## 6 · 红线
+
+- 没列出"受影响位置清单"前，**不许**改任何公开函数签名 / 返回字段。
+- 不许借"精简"之名顺手删 `# DEPRECATED` 之外的任何旧入口。
+- 不许把 `forecasting/` 里的反数据泄漏断言（`backtest.py` 中的 `assert t < n` / 严格 `y[:t]`）当成"冗余"删掉——见 `exam-contract.mdc` §3。
